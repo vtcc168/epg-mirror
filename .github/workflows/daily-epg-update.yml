@@ -1,32 +1,21 @@
-name: 测试生成gz
+name: update
 on:
   workflow_dispatch
-
 permissions:
   contents: write
-
 jobs:
-  test:
+  run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      # 1. 下载文件
-      - name: 下载
-        run: curl -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
-
-      # 2. 生成 gz（最标准、不会错）
-      - name: 压缩
-        run: |
-          gzip -c epg.xml > epg.xml.gz
-          # 这里会打印出当前有什么文件！！！
-          ls -la
-
-      # 3. 强制上传
-      - name: 上传
-        run: |
-          git config user.name test
-          git config user.email test@test.com
-          git add epg.xml.gz
-          git commit -m "test" --allow-empty
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - run: curl -L o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
+      - run: gzip epg.xml
+      - run: ls -la
+      - run: |
+          git config user.name bot
+          git config user.email bot@bot.com
+          git add -f epg.xml.gz
+          git commit -m "update"
           git push -f origin main
