@@ -1,34 +1,22 @@
-name: 更新 EPG 数据
+name: make-gz
 on:
-  schedule:
-    - cron: '0 */6 * * *'
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
-  update-epg:
+  make:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 下载 EPG
+      - uses: actions/checkout@v4
+      - name: Make gz
         run: |
-          curl -L -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
-
-      - name: 生成压缩包
+          curl -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
+          gzip epg.xml
+          ls -la
+      - name: Push
         run: |
-          gzip -c epg.xml > epg.xml.gz
-
-      - name: 【强制提交！必传 gz 文件】
-        run: |
-          git config user.name "auto"
-          git config user.email "auto@auto.com"
-          git add epg.xml epg.xml.gz
-          # 重点：强制提交，哪怕文件没变化也上传
-          git commit -m "强制更新 gz" --allow-empty
+          git config user.name bot
+          git config user.email bot@bot.com
+          git add -f .
+          git commit -m "gz"
           git push -f origin main
