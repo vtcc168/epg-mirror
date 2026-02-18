@@ -1,83 +1,212 @@
 name: 更新 EPG 数据
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 保留你的6小时定时执行
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 permissions:
-  contents: write  # 仅需基础写权限，无需额外授权
+  contents: write
 
 jobs:
   update-epg:
     runs-on: ubuntu-latest
     steps:
-      - name: 安装 jq 工具（用于构建 JSON 和解析响应）
-        run: sudo apt-get install -y jq
-
-      - name: 下载 EPG 文件并验证
+      - name: 安装依赖工具+开启严格错误模式
         run: |
-          curl -L -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
-          # 验证文件是否存在且非空
-          if [ ! -s epg.xml ]; then
-            echo "❌ 下载失败：epg.xml 文件为空或不存在"
+          sudo apt-get update
+          sudo apt-get install -y jq
+          set -euo pipefail  # 出错立即退出，不会隐藏失败
+
+      - name: 初始化全局参数（自动适配你的仓库）
+        run: |
+          # 仓库信息
+          echo "REPO=${{ github.repository }}" >> $GITHUB_ENV
+          echo "TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+          # 目标文件名（和你仓库里的文件严格对应）
+          echo "XML_FILE=epg.xml" >> $GITHUB_ENV
+          echo "GZ_FILE=epg.xml.gz" >> $GITHUB_ENV
+          # 自动获取仓库的默认分支（避免推错分支）
+          DEFAULT_BRANCH=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }} | jq -r '.default_branch')
+          echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> $GITHUB_ENV
+          echo "✅ 仓库默认分支: $DEFAULT_BRANCH"
+
+      - name: 下载 EPG 源文件+验证有效性
+        run: |
+          echo "📥 开始下载 EPG 源文件"
+          curl -L -f -o "$XML_FILE" https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
+          
+          # 验证文件非空
+          if [ ! -s "$XML_FILE" ]; then
+            echo "❌ 下载失败：$XML_FILE 为空或不存在"
             exit 1
           fi
-          echo "✅ 成功下载 epg.xml，文件大小: $(du -h epg.xml | cut -f1)"
+          # 计算文件MD5，用于对比是否有更新
+          echo "XML_MD5=$(md5sum $XML_FILE | awk '{print $1}')" >> $GITHUB_ENV
+          echo "✅ 下载成功，文件大小: $(du -h $XML_FILE | cut -f1)，MD5: $XML_MD5"
 
-      - name: 生成压缩文件并验证
+      - name: 生成压缩包+验证完整性
         run: |
-          gzip -c epg.xml > epg.xml.gz
-          # 验证压缩包是否有效
-          if ! gzip -t epg.xml.gz; then
-            echo "❌ 压缩失败：epg.xml.gz 文件损坏"
+          echo "🗜️ 开始生成压缩文件"
+          gzip -c -f "$XML_FILE" > "$GZ_FILE"
+          
+          # 验证压缩包是否损坏
+          if ! gzip -t "$GZ_FILE"; then
+            echo "❌ 压缩失败：$GZ_FILE 已损坏"
             exit 1
           fi
-          echo "✅ 成功生成 epg.xml.gz，文件大小: $(du -h epg.xml.gz | cut -f1)"
+          # 计算压缩包MD5
+          echo "GZ_MD5=$(md5sum $GZ_FILE | awk '{print $1}')" >> $GITHUB_ENV
+          echo "✅ 压缩成功，文件大小: $(du -h $GZ_FILE | cut -f1)，MD5: $GZ_MD5"
 
-      - name: 上传并覆盖 epg.xml 到仓库
+      - name: 检查并覆盖更新 epg.xml
         run: |
-          # 获取旧文件的 SHA（如果文件不存在，sha 为空）
-          sha=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/contents/epg.xml | jq -r '.sha // empty')
-          
-          # 编码文件为 Base64
-          content=$(base64 -w 0 epg.xml)
-          
-          # 构建 JSON 数据（包含 sha 以覆盖旧文件）
-          if [ -n "$sha" ]; then
-            jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" --arg sha "$sha" \
-              '{"message": $msg, "content": $content, "sha": $sha}'
-          else
-            jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" \
-              '{"message": $msg, "content": $content}'
-          fi | \
-          curl -X PUT \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Content-Type: application/json" \
-            https://api.github.com/repos/${{ github.repository }}/contents/epg.xml \
-            --data @-
+          echo "🔍 检查仓库中的 $XML_FILE"
+          # 获取仓库里旧文件的信息（SHA、内容）
+          OLD_FILE_INFO=$(curl -s -w "\n%{http_code}" -H "Authorization: token $TOKEN" \
+            "https://api.github.com/repos/$REPO/contents/$XML_FILE?ref=$DEFAULT_BRANCH")
+          HTTP_CODE=$(echo "$OLD_FILE_INFO" | tail -n1)
+          OLD_FILE_CONTENT=$(echo "$OLD_FILE_INFO" | head -n -1)
 
-      - name: 上传并覆盖 epg.xml.gz 到仓库
-        run: |
-          # 获取旧文件的 SHA（如果文件不存在，sha 为空）
-          sha=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/contents/epg.xml.gz | jq -r '.sha // empty')
-          
-          # 编码文件为 Base64
-          content=$(base64 -w 0 epg.xml.gz)
-          
-          # 构建 JSON 数据（包含 sha 以覆盖旧文件）
-          if [ -n "$sha" ]; then
-            jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" --arg sha "$sha" \
-              '{"message": $msg, "content": $content, "sha": $sha}'
+          SHA=""
+          OLD_MD5=""
+
+          # 判断文件是否存在
+          if [ "$HTTP_CODE" = "200" ]; then
+            SHA=$(echo "$OLD_FILE_CONTENT" | jq -r '.sha')
+            # 解码旧文件，计算MD5对比
+            echo "$OLD_FILE_CONTENT" | jq -r '.content' | base64 -d | md5sum | awk '{print $1}' > old_md5.txt
+            OLD_MD5=$(cat old_md5.txt)
+            echo "📦 仓库已有文件，SHA: $SHA，MD5: $OLD_MD5"
+
+            # 内容无变化则直接跳过，不更新
+            if [ "$OLD_MD5" = "$XML_MD5" ]; then
+              echo "ℹ️ $XML_FILE 内容无变化，无需更新"
+              exit 0
+            fi
+            echo "🔄 内容有变化，开始覆盖更新"
+
+          elif [ "$HTTP_CODE" = "404" ]; then
+            echo "📦 仓库无此文件，将创建新文件"
           else
-            jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" \
-              '{"message": $msg, "content": $content}'
-          fi | \
-          curl -X PUT \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Content-Type: application/json" \
-            https://api.github.com/repos/${{ github.repository }}/contents/epg.xml.gz \
-            --data @-
+            echo "❌ 获取文件信息失败，状态码: $HTTP_CODE"
+            echo "错误详情: $OLD_FILE_CONTENT"
+            exit 1
+          fi
+
+          # 编码新文件内容
+          CONTENT=$(base64 -w 0 "$XML_FILE")
+
+          # 上传文件（覆盖/创建）
+          echo "🚀 开始上传 $XML_FILE"
+          if [ -n "$SHA" ]; then
+            UPLOAD_RESULT=$(jq -n \
+              --arg msg "自动更新 EPG 数据" \
+              --arg content "$CONTENT" \
+              --arg sha "$SHA" \
+              --arg branch "$DEFAULT_BRANCH" \
+              '{"message": $msg, "content": $content, "sha": $sha, "branch": $branch}' | \
+            curl -s -w "\n%{http_code}" -X PUT \
+              -H "Authorization: token $TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/contents/$XML_FILE" \
+              --data @-)
+          else
+            UPLOAD_RESULT=$(jq -n \
+              --arg msg "自动更新 EPG 数据" \
+              --arg content "$CONTENT" \
+              --arg branch "$DEFAULT_BRANCH" \
+              '{"message": $msg, "content": $content, "branch": $branch}' | \
+            curl -s -w "\n%{http_code}" -X PUT \
+              -H "Authorization: token $TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/contents/$XML_FILE" \
+              --data @-)
+          fi
+
+          # 检查上传结果
+          UPLOAD_CODE=$(echo "$UPLOAD_RESULT" | tail -n1)
+          UPLOAD_DETAIL=$(echo "$UPLOAD_RESULT" | head -n -1)
+          if [ "$UPLOAD_CODE" = "200" ] || [ "$UPLOAD_CODE" = "201" ]; then
+            echo "✅ $XML_FILE 更新成功！"
+          else
+            echo "❌ 上传失败，状态码: $UPLOAD_CODE"
+            echo "错误详情: $UPLOAD_DETAIL"
+            exit 1
+          fi
+
+      - name: 检查并覆盖更新 epg.xml.gz
+        run: |
+          echo "🔍 检查仓库中的 $GZ_FILE"
+          # 获取仓库里旧压缩包的信息
+          OLD_FILE_INFO=$(curl -s -w "\n%{http_code}" -H "Authorization: token $TOKEN" \
+            "https://api.github.com/repos/$REPO/contents/$GZ_FILE?ref=$DEFAULT_BRANCH")
+          HTTP_CODE=$(echo "$OLD_FILE_INFO" | tail -n1)
+          OLD_FILE_CONTENT=$(echo "$OLD_FILE_INFO" | head -n -1)
+
+          SHA=""
+          OLD_MD5=""
+
+          # 判断压缩包是否存在
+          if [ "$HTTP_CODE" = "200" ]; then
+            SHA=$(echo "$OLD_FILE_CONTENT" | jq -r '.sha')
+            # 解码旧压缩包，计算MD5对比
+            echo "$OLD_FILE_CONTENT" | jq -r '.content' | base64 -d | md5sum | awk '{print $1}' > old_gz_md5.txt
+            OLD_MD5=$(cat old_gz_md5.txt)
+            echo "📦 仓库已有压缩包，SHA: $SHA，MD5: $OLD_MD5"
+
+            # 内容无变化则跳过
+            if [ "$OLD_MD5" = "$GZ_MD5" ]; then
+              echo "ℹ️ $GZ_FILE 内容无变化，无需更新"
+              exit 0
+            fi
+            echo "🔄 内容有变化，开始覆盖更新"
+
+          elif [ "$HTTP_CODE" = "404" ]; then
+            echo "📦 仓库无此压缩包，将创建新文件"
+          else
+            echo "❌ 获取压缩包信息失败，状态码: $HTTP_CODE"
+            echo "错误详情: $OLD_FILE_CONTENT"
+            exit 1
+          fi
+
+          # 编码压缩包内容
+          CONTENT=$(base64 -w 0 "$GZ_FILE")
+
+          # 上传压缩包
+          echo "🚀 开始上传 $GZ_FILE"
+          if [ -n "$SHA" ]; then
+            UPLOAD_RESULT=$(jq -n \
+              --arg msg "自动更新 EPG 数据" \
+              --arg content "$CONTENT" \
+              --arg sha "$SHA" \
+              --arg branch "$DEFAULT_BRANCH" \
+              '{"message": $msg, "content": $content, "sha": $sha, "branch": $branch}' | \
+            curl -s -w "\n%{http_code}" -X PUT \
+              -H "Authorization: token $TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/contents/$GZ_FILE" \
+              --data @-)
+          else
+            UPLOAD_RESULT=$(jq -n \
+              --arg msg "自动更新 EPG 数据" \
+              --arg content "$CONTENT" \
+              --arg branch "$DEFAULT_BRANCH" \
+              '{"message": $msg, "content": $content, "branch": $branch}' | \
+            curl -s -w "\n%{http_code}" -X PUT \
+              -H "Authorization: token $TOKEN" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/$REPO/contents/$GZ_FILE" \
+              --data @-)
+          fi
+
+          # 检查上传结果
+          UPLOAD_CODE=$(echo "$UPLOAD_RESULT" | tail -n1)
+          UPLOAD_DETAIL=$(echo "$UPLOAD_RESULT" | head -n -1)
+          if [ "$UPLOAD_CODE" = "200" ] || [ "$UPLOAD_CODE" = "201" ]; then
+            echo "✅ $GZ_FILE 更新成功！"
+          else
+            echo "❌ 上传失败，状态码: $UPLOAD_CODE"
+            echo "错误详情: $UPLOAD_DETAIL"
+            exit 1
+          fi
