@@ -11,7 +11,7 @@ jobs:
   update-epg:
     runs-on: ubuntu-latest
     steps:
-      - name: 安装 jq 工具（用于构建 JSON）
+      - name: 安装 jq 工具（用于构建 JSON 和解析响应）
         run: sudo apt-get install -y jq
 
       - name: 下载 EPG 文件并验证
@@ -34,13 +34,23 @@ jobs:
           fi
           echo "✅ 成功生成 epg.xml.gz，文件大小: $(du -h epg.xml.gz | cut -f1)"
 
-      - name: 上传 epg.xml 到仓库（通过 API，避免参数过长）
+      - name: 上传并覆盖 epg.xml 到仓库
         run: |
+          # 获取旧文件的 SHA（如果文件不存在，sha 为空）
+          sha=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/contents/epg.xml | jq -r '.sha // empty')
+          
           # 编码文件为 Base64
           content=$(base64 -w 0 epg.xml)
-          # 使用 jq 构建 JSON，并通过管道传递给 curl
-          jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" \
-            '{"message": $msg, "content": $content}' | \
+          
+          # 构建 JSON 数据（包含 sha 以覆盖旧文件）
+          if [ -n "$sha" ]; then
+            jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" --arg sha "$sha" \
+              '{"message": $msg, "content": $content, "sha": $sha}'
+          else
+            jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" \
+              '{"message": $msg, "content": $content}'
+          fi | \
           curl -X PUT \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
@@ -48,11 +58,23 @@ jobs:
             https://api.github.com/repos/${{ github.repository }}/contents/epg.xml \
             --data @-
 
-      - name: 上传 epg.xml.gz 到仓库（通过 API，避免参数过长）
+      - name: 上传并覆盖 epg.xml.gz 到仓库
         run: |
+          # 获取旧文件的 SHA（如果文件不存在，sha 为空）
+          sha=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/contents/epg.xml.gz | jq -r '.sha // empty')
+          
+          # 编码文件为 Base64
           content=$(base64 -w 0 epg.xml.gz)
-          jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" \
-            '{"message": $msg, "content": $content}' | \
+          
+          # 构建 JSON 数据（包含 sha 以覆盖旧文件）
+          if [ -n "$sha" ]; then
+            jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" --arg sha "$sha" \
+              '{"message": $msg, "content": $content, "sha": $sha}'
+          else
+            jq -n --arg msg "自动更新 EPG 数据" --arg content "$content" \
+              '{"message": $msg, "content": $content}'
+          fi | \
           curl -X PUT \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
