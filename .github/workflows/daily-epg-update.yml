@@ -14,30 +14,21 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 下载 EPG 文件
+      - name: 下载 EPG
         run: |
-          EPG_URL="https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml"
-          echo "正在下载 EPG 文件: $EPG_URL"
-          curl -L -o epg.xml "$EPG_URL"
-          if [ -f "epg.xml" ]; then
-            echo "✅ EPG 文件下载成功"
-          else
-            echo "❌ EPG 文件下载失败"
-            exit 1
-          fi
+          curl -L -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
 
-      - name: 生成真正的压缩文件 epg.xml.gz
+      - name: 生成压缩包
         run: |
           gzip -c epg.xml > epg.xml.gz
-          echo "✅ 已生成压缩文件"
 
-      - name: 上传 xml + gz
+      - name: 【强制提交！必传 gz 文件】
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          git config user.name "auto"
+          git config user.email "auto@auto.com"
           git add epg.xml epg.xml.gz
-          git commit -m "更新 EPG 和压缩包" || exit 0
+          # 重点：强制提交，哪怕文件没变化也上传
+          git commit -m "强制更新 gz" --allow-empty
           git push -f origin main
