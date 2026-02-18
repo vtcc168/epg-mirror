@@ -1,8 +1,8 @@
 name: 更新 EPG 数据
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 每6小时自动执行一次
-  workflow_dispatch:        # 允许手动触发
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -29,37 +29,16 @@ jobs:
             exit 1
           fi
 
-      # 👇 只多了这一段，别的完全没动
-      - name: 压缩成 epg.xml.gz
+      - name: 生成 epg.xml.gz
         run: |
           gzip -c epg.xml > epg.xml.gz
-          echo "✅ 已生成 epg.xml.gz"
+          echo "✅ epg.xml.gz 已生成"
 
-      - name: 提交并强制推送（彻底忽略 workflows）
+      - name: 强制提交 xml+gz 并推送
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          # 1. 先重置所有变更，回到上一次提交状态
-          git reset --hard HEAD
-          
-          # 2. 重新下载 EPG 文件，确保是最新的
-          curl -L -o epg.xml "https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml"
-          
-          # 3. 生成压缩包
-          gzip -c epg.xml > epg.xml.gz
-          
-          # 4. 只添加 epg.xml 和 epg.xml.gz，其他一概不管
           git add epg.xml epg.xml.gz
-          
-          # 5. 检查是否有变更
-          if git diff --staged --quiet; then
-            echo "ℹ️ EPG 文件无变更，无需提交"
-            exit 0
-          else
-            echo "✅ 检测到变更，准备提交"
-            # 6. 只提交这两个文件
-            git commit -m "自动更新 EPG 数据 + 生成 xml.gz" -- epg.xml epg.xml.gz
-            # 7. 强制推送
-            git push -f origin main
-            echo "✅ 推送成功"
-          fi
+          git commit -m "更新EPG+gz" || exit 0
+          git push -f origin main
+          echo "✅ 全部上传完成"
