@@ -9,10 +9,12 @@ jobs:
   update-epg:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
+      - name: 检出数据分支（epg-data）
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: epg-data  # 关键：检出专门存储数据的分支
+          fetch-depth: 0
 
       - name: 下载 EPG 文件
         run: |
@@ -22,16 +24,11 @@ jobs:
         run: |
           gzip -c epg.xml > epg.xml.gz
 
-      - name: 提交并推送（绝对排除工作流文件）
+      - name: 提交并推送至数据分支
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           
-          # 只添加我们需要的文件，彻底排除 .github 目录
-          git add --force epg.xml epg.xml.gz ':!.github'
-          
-          # 提交变更，无变更则静默退出
+          git add epg.xml epg.xml.gz
           git commit -m "自动更新 EPG 数据" || exit 0
-          
-          # 强制推送
-          git push -f origin main
+          git push -f origin epg-data
