@@ -3,8 +3,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  workflows: write  # 关键：显式授予修改工作流的权限
+  contents: write  # 只保留最基础的写权限，移除有问题的 workflows 权限
 
 jobs:
   update-epg:
@@ -23,15 +22,15 @@ jobs:
         run: |
           gzip -c epg.xml > epg.xml.gz
 
-      - name: 提交并推送
+      - name: 提交并推送（绝对排除工作流文件）
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           
-          # 只添加我们需要的文件
-          git add epg.xml epg.xml.gz
+          # 关键：使用 --force 强制添加，同时用 :! 语法彻底排除 .github 目录
+          git add --force epg.xml epg.xml.gz ':!.github'
           
-          # 提交变更
+          # 提交变更，如果没有文件变更则静默退出
           git commit -m "自动更新 EPG 数据" || exit 0
           
           # 推送
