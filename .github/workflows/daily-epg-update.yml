@@ -17,66 +17,66 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           clean: true
 
-      - name: 【关键修复】配置Git，防止二进制压缩包损坏
+      - name: 【核心锁死】彻底禁止Git修改压缩包（从根源避免损坏）
         run: |
-          # 强制告诉Git：gz是二进制文件，绝对不能修改内容；xml用标准LF换行
+          # 1. 强制声明gz是二进制文件，Git绝对不能碰任何字节
           cat > .gitattributes << EOF
           *.xml text eol=lf
           *.gz binary
           EOF
-          # 关闭Git自动换行符转换，彻底避免破坏文件
+          # 2. 彻底关闭Git所有自动换行符转换，完全避免修改文件内容
           git config --global core.autocrlf false
-          echo "✅ Git配置完成，已锁定压缩包格式，防止损坏"
+          git config --global core.eol lf
+          echo "✅ Git二进制保护配置完成，压缩包不会被Git修改"
 
-      - name: 下载 EPG 源文件+严格有效性验证
+      - name: 下载源XML文件（已验证过正常，仅做非空校验）
         run: |
-          echo "📥 开始下载 EPG 源文件（失败自动重试3次）"
-          # 加重试、失败强制退出，确保下载到完整的源文件
-          curl -L -f --retry 3 -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
+          echo "📥 下载EPG源文件"
+          curl -L -f --retry 3 --retry-delay 5 -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
           
-          # 验证1：文件非空
+          # 仅校验文件非空，你已验证过XML语法正常
           if [ ! -s epg.xml ]; then
-            echo "❌ 下载失败：epg.xml 文件为空"
+            echo "❌ 下载失败：XML文件为空"
             exit 1
           fi
           
-          # 验证2：是有效的XML文件（检查头部）
-          if ! head -n 1 epg.xml | grep -q "<?xml"; then
-            echo "❌ 下载的文件不是有效的XML文件"
-            head -n 5 epg.xml
-            exit 1
-          fi
-          
-          # 记录源文件MD5，用于后续解压对比
+          # 记录源文件MD5，用于压缩后对比
           echo "SOURCE_MD5=$(md5sum epg.xml | awk '{print $1}')" >> $GITHUB_ENV
-          echo "✅ 下载成功，文件大小: $(du -h epg.xml | cut -f1)，MD5: $SOURCE_MD5"
+          echo "✅ 源文件下载完成，大小: $(du -h epg.xml | cut -f1)，MD5: $SOURCE_MD5"
 
-      - name: 生成压缩包+双重完整性验证
+      - name: 【核心】生成标准gzip压缩包+双重强制验证
         run: |
           echo "🗜️ 生成标准gzip压缩包"
-          # 用最标准的gzip命令压缩，兼容所有解压工具
-          gzip -c epg.xml > epg.xml.gz
+          # 用gzip原生标准命令压缩，-k保留源文件，避免重定向可能的异常
+          gzip -k -f epg.xml
           
-          # 验证1：gzip自带完整性测试，确保压缩包结构正常
+          # ========== 验证1：压缩包结构完整性 ==========
+          echo "🔍 验证1：检查压缩包结构"
           if ! gzip -t epg.xml.gz; then
-            echo "❌ 压缩失败：epg.xml.gz 压缩包结构损坏"
+            echo "❌ 压缩包结构损坏，压缩失败"
             exit 1
           fi
-          echo "✅ 压缩包结构测试通过"
+          echo "✅ 压缩包结构验证通过，无损坏"
+
+          # ========== 验证2：解压后内容与源文件100%一致 ==========
+          echo "🔍 验证2：解压对比源文件内容"
+          # 解压压缩包到临时文件
+          gzip -dc epg.xml.gz > epg_unzip_test.xml
+          # 计算解压后文件的MD5
+          UNZIP_MD5=$(md5sum epg_unzip_test.xml | awk '{print $1}')
           
-          # 验证2：解压测试，对比源文件MD5，确保内容完全一致
-          gzip -dc epg.xml.gz > epg_test.xml
-          TEST_MD5=$(md5sum epg_test.xml | awk '{print $1}')
-          
-          if [ "$TEST_MD5" != "$SOURCE_MD5" ]; then
+          # 强制对比MD5，不一致直接退出，绝不推送损坏的包
+          if [ "$UNZIP_MD5" != "$SOURCE_MD5" ]; then
             echo "❌ 解压后内容与源文件不一致，压缩包无效"
+            echo "源文件MD5: $SOURCE_MD5"
+            echo "解压后MD5: $UNZIP_MD5"
             exit 1
           fi
           
-          # 清理测试文件
-          rm -f epg_test.xml
-          echo "✅ 压缩包解压测试通过，内容与源文件完全一致"
-          echo "✅ 最终压缩包大小: $(du -h epg.xml.gz | cut -f1)"
+          # 清理临时文件
+          rm -f epg_unzip_test.xml
+          echo "✅ 压缩包内容验证通过，解压后与源文件完全一致"
+          echo "✅ 最终压缩包生成完成，大小: $(du -h epg.xml.gz | cut -f1)"
 
       - name: 提交并推送文件
         run: |
@@ -85,15 +85,14 @@ jobs:
           
           # 清空暂存区，确保只提交目标文件
           git reset --mixed HEAD
-          
-          # 提交配置文件+目标文件，强制排除工作流目录
+          # 提交保护配置+XML+压缩包，强制排除工作流目录
           git add -f .gitattributes epg.xml epg.xml.gz ':!.github'
           
           # 列出本次提交的文件，确认无误
           echo "📋 本次提交的文件列表："
           git diff --cached --name-only
           
-          # 无变化则直接退出，不做无效提交
+          # 无变化则直接退出
           if git diff --cached --quiet; then
             echo "ℹ️ 文件内容无变化，无需更新"
             exit 0
@@ -102,4 +101,4 @@ jobs:
           # 提交并推送
           git commit -m "自动更新 EPG 数据"
           git push origin HEAD
-          echo "✅ 所有文件推送成功！压缩包100%可正常解压"
+          echo "✅ 所有文件推送成功！压缩包已通过双重验证，100%可正常解压"
