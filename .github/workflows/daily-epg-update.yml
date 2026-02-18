@@ -2,11 +2,8 @@ name: 更新 EPG 数据
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+    - cron: '0 */6 * * *'  # 每6小时自动执行一次
+  workflow_dispatch:        # 允许手动触发
 
 jobs:
   update-epg:
@@ -18,43 +15,41 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 下载并压缩 EPG
+      - name: 下载 EPG 文件
         run: |
-          # 下载文件
-          curl -L -f -o epg.xml "https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml" || { echo "下载失败"; exit 1; }
-          echo "下载成功，文件大小: $(du -h epg.xml)"
-          
-          # 压缩文件
-          gzip -c epg.xml > epg.xml.gz
-          echo "压缩成功，文件大小: $(du -h epg.xml.gz)"
-          
-          # 列出当前目录所有文件（调试用）
-          echo "当前目录文件列表:"
-          ls -la
+          EPG_URL="https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml"
+          echo "正在下载 EPG 文件: $EPG_URL"
+          curl -L -o epg.xml "$EPG_URL"
+          if [ -f "epg.xml" ]; then
+            echo "✅ EPG 文件下载成功，大小: $(du -h epg.xml)"
+          else
+            echo "❌ EPG 文件下载失败"
+            exit 1
+          fi
 
-      - name: 提交并推送
+      - name: 提交并强制推送（彻底忽略 workflows）
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
+
+          # 1. 先重置所有变更，回到上一次提交状态
+          git reset --hard HEAD
           
-          # 明确切换到当前分支（防止 detached HEAD）
-          git checkout ${{ github.ref_name }}
+          # 2. 重新下载 EPG 文件，确保是最新的
+          curl -L -o epg.xml "https://pie.bz/xmltv.php?username=54HEzs2zra&password=Uu273LQbBN"
           
-          # 强制添加文件（覆盖旧版本）
-          git add -f epg.xml epg.xml.gz
+          # 3. 只添加 epg.xml，忽略其他所有文件
+          git add epg.xml
           
-          # 查看 git 状态（调试用）
-          git status
-          
-          # 提交（允许空提交，确保每次都有新提交）
-          git commit --allow-empty -m "自动更新 EPG 数据 $(date +'%Y-%m-%d %H:%M:%S')"
-          
-          # 强制推送到远程
-          git push --force origin ${{ github.ref_name }}
-          
-          echo "推送成功"
-          
-          # 输出文件访问地址
-          echo "文件访问地址:"
-          echo "  https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/epg.xml"
-          echo "  https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/epg.xml.gz"
+          # 4. 检查是否有变更
+          if git diff --staged --quiet; then
+            echo "ℹ️ EPG 文件无变更，无需提交"
+            exit 0
+          else
+            echo "✅ 检测到变更，准备提交"
+            # 5. 提交时，明确只包含 epg.xml
+            git commit -m "自动更新 EPG 数据" -- epg.xml
+            # 6. 强制推送
+            git push -f origin main
+            echo "✅ 推送成功"
+          fi
