@@ -29,16 +29,24 @@ jobs:
             exit 1
           fi
 
-      - name: 生成 epg.xml.gz
+      - name: 生成 epg.xml.gz 压缩文件
         run: |
           gzip -c epg.xml > epg.xml.gz
-          echo "✅ 已生成压缩包"
+          echo "✅ epg.xml.gz 已生成"
 
-      - name: 【只改这里】强制上传 xml + gz
+      - name: 提交并推送（已删掉致命的reset）
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          
+
+          # 只上传 xml + gz
           git add epg.xml epg.xml.gz
-          git commit -m "更新EPG+gz"
+
+          if git diff --staged --quiet; then
+            echo "ℹ️ 文件无变化"
+            exit 0
+          fi
+
+          git commit -m "更新EPG并上传gz"
           git push -f origin main
+          echo "✅ 推送成功"
