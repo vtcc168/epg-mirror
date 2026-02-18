@@ -5,65 +5,52 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 仅需基础写权限，无需任何额外配置
+  contents: write
 
 jobs:
   update-epg:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出仓库代码（干净工作区）
+      - name: 检出仓库代码
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          clean: true  # 自动清理所有多余文件，避免意外提交
+          clean: true
 
-      - name: 下载 EPG 源文件+验证有效性
+      - name: 下载 EPG 源文件
         run: |
-          echo "📥 开始下载 EPG 源文件"
           curl -L -f -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
-          
-          # 验证文件非空，下载失败直接退出
           if [ ! -s epg.xml ]; then
-            echo "❌ 下载失败：epg.xml 为空或不存在"
+            echo "❌ 下载失败，文件为空"
             exit 1
           fi
           echo "✅ 下载成功，文件大小: $(du -h epg.xml | cut -f1)"
 
-      - name: 生成压缩包+验证完整性
+      - name: 生成压缩包
         run: |
-          echo "🗜️ 开始生成压缩文件"
           gzip -c -f epg.xml > epg.xml.gz
-          
-          # 验证压缩包无损坏，避免上传无效文件
           if ! gzip -t epg.xml.gz; then
-            echo "❌ 压缩失败：epg.xml.gz 已损坏"
+            echo "❌ 压缩包损坏"
             exit 1
           fi
           echo "✅ 压缩成功，文件大小: $(du -h epg.xml.gz | cut -f1)"
 
-      - name: 提交并推送文件（仅提交目标文件，绝对不碰工作流）
+      - name: 提交并推送文件
         run: |
-          # 配置Git用户信息
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           
-          # 清空暂存区，确保没有任何意外文件被提交
           git reset --mixed HEAD
-          
-          # 【核心】仅添加我们需要的2个文件，强制排除整个.github目录
+          # 仅添加目标文件，绝对不碰工作流目录
           git add -f epg.xml epg.xml.gz ':!.github'
           
-          # 【关键验证】在日志里列出本次要提交的所有文件，你可以一眼确认是否正确
-          echo "📋 本次提交的文件列表："
-          git diff --cached --name-only
-          
-          # 检查文件内容是否有变化，无变化则直接退出，不做无效提交
+          # 无变化则直接退出
           if git diff --cached --quiet; then
-            echo "ℹ️ 文件内容无变化，无需更新"
+            echo "ℹ️ 文件无变化，无需更新"
             exit 0
           fi
           
-          # 提交并推送（适配任何分支名，不管你的仓库默认分支是main还是master）
+          # 提交并推送
           git commit -m "自动更新 EPG 数据"
           git push origin HEAD
-          echo "✅ 文件推送成功！仓库里的文件已经更新为最新版本"
+          echo "✅ 文件更新成功！"
