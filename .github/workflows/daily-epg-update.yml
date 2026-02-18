@@ -1,4 +1,4 @@
-name: 更新 EPG 数据 2
+name: 更新 EPG 数据
 
 on:
   schedule:
@@ -27,26 +27,29 @@ jobs:
             exit 1
           fi
 
-      - name: 提交并强制推送（仅 epg.xml）
+      - name: 提交并强制推送（彻底忽略 workflows）
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-          # 先重置所有变更，只保留刚下载的 epg.xml
+          # 1. 先重置所有变更，回到上一次提交状态
           git reset --hard HEAD
-          # 重新下载，确保是最新的
+          
+          # 2. 重新下载 EPG 文件，确保是最新的
           curl -L -o epg.xml "https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml"
-
-          # 只添加 epg.xml
+          
+          # 3. 只添加 epg.xml，忽略其他所有文件
           git add epg.xml
-
-          # 检查是否有变更
+          
+          # 4. 检查是否有变更
           if git diff --staged --quiet; then
             echo "ℹ️ EPG 文件无变更，无需提交"
             exit 0
           else
             echo "✅ 检测到变更，准备提交"
-            git commit -m "自动更新 EPG 数据"
+            # 5. 提交时，明确只包含 epg.xml
+            git commit -m "自动更新 EPG 数据" -- epg.xml
+            # 6. 强制推送
             git push -f origin main
             echo "✅ 推送成功"
           fi
