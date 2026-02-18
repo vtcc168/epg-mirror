@@ -17,7 +17,7 @@ jobs:
 
       - name: 下载 EPG 文件
         run: |
-          EPG_URL="https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml"
+          EPG_URL="https://pie.bz/xmltv.php?username=54HEzs2zra&password=Uu273LQbBN"
           echo "正在下载 EPG 文件: $EPG_URL"
           curl -L -o epg.xml "$EPG_URL"
           if [ -f "epg.xml" ]; then
