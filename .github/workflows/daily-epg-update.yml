@@ -16,7 +16,7 @@ jobs:
 
       - name: 下载EPG文件
         run: |
-          curl -L -k -o epg.xml https://gitee.com/taksssss/tv/raw/main/epg/112114.xml
+          curl -L -k -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
 
       - name: 提交更新
         uses: EndBug/add-and-commit@v9
