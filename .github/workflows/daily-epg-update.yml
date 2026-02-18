@@ -16,13 +16,25 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 下载 EPG 文件
+      - name: 下载 EPG 文件并验证
         run: |
           curl -L -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
+          # 验证文件是否存在且非空
+          if [ ! -s epg.xml ]; then
+            echo "❌ 下载失败：epg.xml 文件为空或不存在"
+            exit 1
+          fi
+          echo "✅ 成功下载 epg.xml，文件大小: $(du -h epg.xml | cut -f1)"
 
-      - name: 生成压缩文件
+      - name: 生成压缩文件并验证
         run: |
           gzip -c epg.xml > epg.xml.gz
+          # 验证压缩包是否有效
+          if ! gzip -t epg.xml.gz; then
+            echo "❌ 压缩失败：epg.xml.gz 文件损坏"
+            exit 1
+          fi
+          echo "✅ 成功生成 epg.xml.gz，文件大小: $(du -h epg.xml.gz | cut -f1)"
 
       - name: 提交并推送（仅提交目标文件）
         run: |
