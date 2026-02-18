@@ -1,26 +1,35 @@
-name: 每日自动更新EPG 2次
+name: 更新 EPG 数据
 
 on:
   schedule:
-    - cron: '0 15 * * *'  # 北京时间 23:00
-    - cron: '0 21 * * *'  # 北京时间 05:00
-  workflow_dispatch:
+    - cron: '0 */6 * * *'  # 每6小时自动执行一次
+  workflow_dispatch:        # 允许手动触发
 
 jobs:
   update-epg:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 拉取完整历史，避免浅克隆问题
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 下载EPG文件
+      - name: 拉取最新变更
         run: |
-          curl -L -k -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
+          git pull origin main --rebase || echo "No changes to pull"
 
-      - name: 提交更新
+      - name: 下载 EPG 文件
+        run: |
+          # 已替换为你提供的 EPG 源地址
+          EPG_URL="https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml"
+          echo "正在下载 EPG 文件: $EPG_URL"
+          curl -L -o epg.xml "$EPG_URL"
+
+      - name: 提交并推送更新
         uses: EndBug/add-and-commit@v9
         with:
-          message: "自动更新EPG"
-          committer_name: GitHub Actions
-          committer_email: actions@github.com
+          author_name: 'GitHub Actions'
+          author_email: 'actions@github.com'
+          message: '自动更新 EPG 数据'
+          push: 'true'
