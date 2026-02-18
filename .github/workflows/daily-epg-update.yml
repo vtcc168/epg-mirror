@@ -2,10 +2,19 @@ name: 更新 EPG 数据
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+  workflows: write  # 显式授予修改工作流的权限
+
 jobs:
   update-epg:
     runs-on: ubuntu-latest
     steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: 下载 EPG 文件
         run: |
           curl -L -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
@@ -14,19 +23,16 @@ jobs:
         run: |
           gzip -c epg.xml > epg.xml.gz
 
-      - name: 克隆数据仓库并推送文件
+      - name: 提交并推送（仅提交目标文件）
         run: |
-          # 克隆你的新数据仓库
-          git clone https://${{ secrets.PAT_TOKEN }}@github.com/你的用户名/epg-data.git
-          cd epg-data
-          
-          # 复制新生成的文件到数据仓库
-          cp ../epg.xml .
-          cp ../epg.xml.gz .
-          
-          # 提交并推送
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add epg.xml epg.xml.gz
+          
+          # 只添加目标文件，彻底排除 .github 目录
+          git add --force epg.xml epg.xml.gz ':!.github'
+          
+          # 提交变更，无变更则静默退出
           git commit -m "自动更新 EPG 数据" || exit 0
-          git push origin main
+          
+          # 推送
+          git push -f origin main
