@@ -1,4 +1,4 @@
-name: 更新EPG
+name: 真正生成并上传 epg.xml.gz
 on:
   workflow_dispatch:
   schedule:
@@ -8,22 +8,25 @@ permissions:
   contents: write
 
 jobs:
-  run:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出仓库
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 下载并压缩
+      - name: 下载源文件并生成真实 .gz
         run: |
+          # 下载 xml
           curl -L -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
+          # 生成 真正的 gz 压缩文件
           gzip -c epg.xml > epg.xml.gz
 
-      - name: 上传两个文件
+      - name: 提交并推送
         run: |
           git config user.name "bot"
           git config user.email "bot@example.com"
           git add epg.xml epg.xml.gz
-          git commit -m "update" || exit 0
+          git commit -m "update epg" || exit 0
           git push -f origin main
