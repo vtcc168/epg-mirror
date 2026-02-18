@@ -32,13 +32,13 @@ jobs:
       - name: 生成 epg.xml.gz
         run: |
           gzip -c epg.xml > epg.xml.gz
-          echo "✅ epg.xml.gz 已生成"
+          echo "✅ 已生成压缩包"
 
-      - name: 强制提交 xml+gz 并推送
+      - name: 【只改这里】强制上传 xml + gz
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
+          
           git add epg.xml epg.xml.gz
-          git commit -m "更新EPG+gz" || exit 0
+          git commit -m "更新EPG+gz"
           git push -f origin main
-          echo "✅ 全部上传完成"
