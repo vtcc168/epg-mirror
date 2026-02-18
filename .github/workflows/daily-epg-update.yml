@@ -17,88 +17,74 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           clean: true
 
-      - name: 【核心锁死】彻底禁止Git修改压缩包（从根源避免损坏）
+      - name: 安装7zip（兼容性拉满的压缩工具）+ 锁死Git二进制保护
         run: |
-          # 1. 强制声明gz是二进制文件，Git绝对不能碰任何字节
+          # 安装7zip
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+          
+          # 彻底锁死Git，绝对不修改压缩包
           cat > .gitattributes << EOF
           *.xml text eol=lf
           *.gz binary
           EOF
-          # 2. 彻底关闭Git所有自动换行符转换，完全避免修改文件内容
           git config --global core.autocrlf false
-          git config --global core.eol lf
-          echo "✅ Git二进制保护配置完成，压缩包不会被Git修改"
+          echo "✅ 环境准备完成"
 
-      - name: 下载源XML文件（已验证过正常，仅做非空校验）
+      - name: 下载源XML文件（非空校验）
         run: |
           echo "📥 下载EPG源文件"
-          curl -L -f --retry 3 --retry-delay 5 -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
+          curl -L -f --retry 3 --retry-delay 5 -o epg.xml  https://pie.bz/xmltv.php?username=54HEzs2zra&password=Uu273LQbBN
           
-          # 仅校验文件非空，你已验证过XML语法正常
           if [ ! -s epg.xml ]; then
             echo "❌ 下载失败：XML文件为空"
             exit 1
           fi
           
-          # 记录源文件MD5，用于压缩后对比
           echo "SOURCE_MD5=$(md5sum epg.xml | awk '{print $1}')" >> $GITHUB_ENV
-          echo "✅ 源文件下载完成，大小: $(du -h epg.xml | cut -f1)，MD5: $SOURCE_MD5"
+          echo "✅ 源文件下载完成，大小: $(du -h epg.xml | cut -f1)"
 
-      - name: 【核心】生成标准gzip压缩包+双重强制验证
+      - name: 【核心】用7zip生成标准gz压缩包+双重验证
         run: |
-          echo "🗜️ 生成标准gzip压缩包"
-          # 用gzip原生标准命令压缩，-k保留源文件，避免重定向可能的异常
-          gzip -k -f epg.xml
+          echo "🗜️ 用7zip生成标准gz压缩包"
+          # 用7zip生成最兼容的gz格式，无任何特殊参数
+          7z a -tgzip epg.xml.gz epg.xml
           
-          # ========== 验证1：压缩包结构完整性 ==========
+          # 验证1：压缩包结构完整性
           echo "🔍 验证1：检查压缩包结构"
-          if ! gzip -t epg.xml.gz; then
-            echo "❌ 压缩包结构损坏，压缩失败"
+          if ! 7z t epg.xml.gz; then
+            echo "❌ 压缩包结构损坏"
             exit 1
           fi
-          echo "✅ 压缩包结构验证通过，无损坏"
+          echo "✅ 压缩包结构验证通过"
 
-          # ========== 验证2：解压后内容与源文件100%一致 ==========
-          echo "🔍 验证2：解压对比源文件内容"
-          # 解压压缩包到临时文件
-          gzip -dc epg.xml.gz > epg_unzip_test.xml
-          # 计算解压后文件的MD5
+          # 验证2：解压后内容与源文件100%一致
+          echo "🔍 验证2：解压对比源文件"
+          7z e -so epg.xml.gz > epg_unzip_test.xml
           UNZIP_MD5=$(md5sum epg_unzip_test.xml | awk '{print $1}')
           
-          # 强制对比MD5，不一致直接退出，绝不推送损坏的包
           if [ "$UNZIP_MD5" != "$SOURCE_MD5" ]; then
-            echo "❌ 解压后内容与源文件不一致，压缩包无效"
-            echo "源文件MD5: $SOURCE_MD5"
-            echo "解压后MD5: $UNZIP_MD5"
+            echo "❌ 解压后内容与源文件不一致"
             exit 1
           fi
           
-          # 清理临时文件
           rm -f epg_unzip_test.xml
           echo "✅ 压缩包内容验证通过，解压后与源文件完全一致"
-          echo "✅ 最终压缩包生成完成，大小: $(du -h epg.xml.gz | cut -f1)"
+          echo "✅ 最终压缩包大小: $(du -h epg.xml.gz | cut -f1)"
 
       - name: 提交并推送文件
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           
-          # 清空暂存区，确保只提交目标文件
           git reset --mixed HEAD
-          # 提交保护配置+XML+压缩包，强制排除工作流目录
           git add -f .gitattributes epg.xml epg.xml.gz ':!.github'
           
-          # 列出本次提交的文件，确认无误
-          echo "📋 本次提交的文件列表："
-          git diff --cached --name-only
-          
-          # 无变化则直接退出
           if git diff --cached --quiet; then
-            echo "ℹ️ 文件内容无变化，无需更新"
+            echo "ℹ️ 文件无变化，无需更新"
             exit 0
           fi
           
-          # 提交并推送
           git commit -m "自动更新 EPG 数据"
           git push origin HEAD
-          echo "✅ 所有文件推送成功！压缩包已通过双重验证，100%可正常解压"
+          echo "✅ 推送成功！压缩包已通过双重验证，100%可用"
