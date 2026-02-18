@@ -3,17 +3,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # 只保留这一行，不再需要 workflows: write
+  contents: write  # 仅需基础写权限，无需额外授权
 
 jobs:
   update-epg:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: 下载 EPG 文件
         run: |
           curl -L -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
@@ -22,11 +17,22 @@ jobs:
         run: |
           gzip -c epg.xml > epg.xml.gz
 
-      - name: 提交并推送
+      - name: 上传 epg.xml 到仓库（通过 API）
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          
-          git add epg.xml epg.xml.gz
-          git commit -m "自动更新 EPG 数据" || exit 0
-          git push -f origin main
+          # 将文件内容编码为 Base64（GitHub API 要求）
+          content=$(base64 -w 0 epg.xml)
+          # 调用 GitHub API 直接上传文件
+          curl -X PUT \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/contents/epg.xml \
+            -d "{\"message\": \"自动更新 EPG 数据\", \"content\": \"$content\"}"
+
+      - name: 上传 epg.xml.gz 到仓库（通过 API）
+        run: |
+          content=$(base64 -w 0 epg.xml.gz)
+          curl -X PUT \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/contents/epg.xml.gz \
+            -d "{\"message\": \"自动更新 EPG 数据\", \"content\": \"$content\"}"
