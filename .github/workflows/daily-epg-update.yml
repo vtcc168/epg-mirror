@@ -12,12 +12,8 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 拉取完整历史，避免浅克隆问题
+          fetch-depth: 0  # 拉取完整历史
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 拉取最新变更
-        run: |
-          git pull origin main --rebase || echo "No changes to pull"
 
       - name: 下载 EPG 文件
         run: |
@@ -26,10 +22,10 @@ jobs:
           echo "正在下载 EPG 文件: $EPG_URL"
           curl -L -o epg.xml "$EPG_URL"
 
-      - name: 提交并推送更新
+      - name: 提交并强制推送更新
         uses: EndBug/add-and-commit@v9
         with:
           author_name: 'GitHub Actions'
           author_email: 'actions@github.com'
           message: '自动更新 EPG 数据'
-          push: 'true'
+          push: '--force'  # 强制推送，彻底解决 non-fast-forward 报错
