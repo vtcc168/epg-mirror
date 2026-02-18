@@ -28,7 +28,7 @@ jobs:
 
           # ========== 2. 下载源文件，全程打印大小，确保非空 ==========
           echo "📥 开始下载EPG源文件"
-          curl -L -f --retry 3 --retry-delay 5 -o epg.xml http://ip.hi-hd.com/epg/bbtv.xml
+          curl -L -f --retry 3 --retry-delay 5 -o epg.xml https://pie.bz/xmltv.php?username=54HEzs2zra&password=Uu273LQbBN
           
           echo "👉 下载后文件大小: $(du -h epg.xml | cut -f1)"
           if [ ! -s epg.xml ]; then
