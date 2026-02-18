@@ -17,7 +17,7 @@ jobs:
 
       - name: 下载 EPG 文件
         run: |
-          EPG_URL="https://pie.bz/xmltv.php?username=54HEzs2zra&password=Uu273LQbBN"
+          EPG_URL="https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml"
           echo "正在下载 EPG 文件: $EPG_URL"
           curl -L -o epg.xml "$EPG_URL"
           if [ -f "epg.xml" ]; then
@@ -36,7 +36,7 @@ jobs:
           git reset --hard HEAD
           
           # 2. 重新下载 EPG 文件，确保是最新的
-          curl -L -o epg.xml "https://pie.bz/xmltv.php?username=54HEzs2zra&password=Uu273LQbBN"
+          curl -L -o epg.xml "https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml"
           
           # 3. 只添加 epg.xml，忽略其他所有文件
           git add epg.xml
