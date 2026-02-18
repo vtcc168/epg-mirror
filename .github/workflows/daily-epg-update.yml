@@ -1,4 +1,4 @@
-name: 真正生成并上传 epg.xml.gz
+name: 自动更新并压缩 EPG
 on:
   workflow_dispatch:
   schedule:
@@ -8,25 +8,22 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  update-epg:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出仓库
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 下载源文件并生成真实 .gz
+      - name: 下载并生成真正的压缩包
         run: |
-          # 下载 xml
           curl -L -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
-          # 生成 真正的 gz 压缩文件
           gzip -c epg.xml > epg.xml.gz
 
-      - name: 提交并推送
+      - name: 自动上传更新
         run: |
-          git config user.name "bot"
-          git config user.email "bot@example.com"
+          git config --global user.name "auto"
+          git config --global user.email "auto@example.com"
           git add epg.xml epg.xml.gz
-          git commit -m "update epg" || exit 0
+          git commit -m "自动更新 EPG" || exit 0
           git push -f origin main
