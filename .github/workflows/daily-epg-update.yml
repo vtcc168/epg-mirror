@@ -1,4 +1,4 @@
-name: 生成真正的 epg.xml.gz
+name: gen-gz
 on:
   workflow_dispatch
 
@@ -6,27 +6,24 @@ permissions:
   contents: write
 
 jobs:
-  make:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # 1. 下载源文件
-      - name: 下载 epg.xml
-        run: curl -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
+      # 1. 下载文件
+      - run: curl -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
 
-      # 2. 真正压缩，生成 epg.xml.gz
-      - name: 压缩成 gz
-        run: |
-          gzip -c epg.xml > epg.xml.gz
-          # 打印目录，让你看见文件真的存在
-          ls -l
+      # 2. 【最稳压缩】直接生成 epg.xml.gz
+      - run: gzip epg.xml
 
-      # 3. 强制上传
-      - name: 上传到仓库
-        run: |
+      # 3. 看一眼文件在不在
+      - run: ls -l
+
+      # 4. 强制上传
+      - run: |
           git config user.name bot
-          git config user.email bot@example.com
+          git config user.email bot@bot.com
           git add epg.xml.gz
-          git commit -m "add gz" --allow-empty
+          git commit -m "gz"
           git push -f origin main
