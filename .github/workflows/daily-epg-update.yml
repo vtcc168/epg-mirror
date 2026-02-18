@@ -1,35 +1,29 @@
-name: 更新 EPG 数据
+name: 更新EPG
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  update-epg:
+  run:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 下载 EPG 文件
+      - name: 下载并压缩
         run: |
-          EPG_URL="https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml"
-          curl -L -o epg.xml "$EPG_URL"
-
-      - name: 生成 epg.xml.gz
-        run: |
+          curl -L -o epg.xml https://raw.githubusercontent.com/sparkssssssssss/epg/main/pp.xml
           gzip -c epg.xml > epg.xml.gz
 
-      - name: 强制上传 xml + gz
+      - name: 上传两个文件
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          git config user.name "bot"
+          git config user.email "bot@example.com"
           git add epg.xml epg.xml.gz
-          git commit -m "更新EPG+gz" || exit 0
+          git commit -m "update" || exit 0
           git push -f origin main
