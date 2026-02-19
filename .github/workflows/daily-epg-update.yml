@@ -1,7 +1,7 @@
 name: 更新 EPG 数据
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 6,23 * * *'
   workflow_dispatch:
 
 permissions:
@@ -17,70 +17,58 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           clean: true
 
-      - name: 【全流程合并】下载→压缩→验证→推送，一步完成
+      - name: 下载→校验→压缩→推送
         run: |
-          # ========== 1. 配置Git，彻底防止压缩包损坏 ==========
+          sudo apt-get update
+          sudo apt-get install -y libxml2-utils
           echo "*.gz binary" > .gitattributes
           git config --global core.autocrlf false
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          echo "✅ Git配置完成"
 
-          # ========== 2. 下载源文件，全程打印大小，确保非空 ==========
-          echo "📥 开始下载EPG源文件"
-          curl -L -f --retry 3 --retry-delay 5 -o epg.xml https://pie.bz/xmltv.php?username=54HEzs2zra&password=Uu273LQbBN
-          
-          echo "👉 下载后文件大小: $(du -h epg.xml | cut -f1)"
+          # 下载时添加 User-Agent，伪装成浏览器
+          echo "📥 从 pie.bz 下载 EPG"
+          curl -L -f --retry 5 --retry-delay 5 --max-time 300 \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            -o epg.xml "https://pie.bz/xmltv.php?username=54HEzs2zra&password=Uu273LQbBN"
+
           if [ ! -s epg.xml ]; then
             echo "❌ 下载失败：文件为空"
             exit 1
           fi
-          
-          # 记录源文件MD5，用于对比
-          SOURCE_MD5=$(md5sum epg.xml | awk '{print $1}')
-          echo "✅ 源文件MD5: $SOURCE_MD5"
+          echo "✅ 下载完成，文件大小: $(du -h epg.xml | cut -f1)"
 
-          # ========== 3. 标准gzip压缩，打印每一步大小 ==========
-          echo "🗜️ 开始标准gzip压缩"
-          # 用最标准的gzip命令，-c重定向，绝对不修改源文件
-          gzip -c epg.xml > epg.xml.gz
-          
-          echo "👉 压缩包大小: $(du -h epg.xml.gz | cut -f1)"
-          if [ ! -s epg.xml.gz ]; then
-            echo "❌ 压缩失败：压缩包为空"
+          echo "🔍 校验 XML 是否完整"
+          if ! xmllint --noout epg.xml 2>&1; then
+            echo "❌ XML 不完整/语法错，停止推送"
             exit 1
           fi
+          echo "✅ XML 校验通过"
 
-          # ========== 4. 双重强制验证，确保压缩包100%可用 ==========
-          echo "🔍 验证1：压缩包结构完整性"
+          echo "🗜️ 生成 epg.xml.gz"
+          gzip -9 -c epg.xml > epg.xml.gz
+
           if ! gzip -t epg.xml.gz; then
-            echo "❌ 压缩包结构损坏"
+            echo "❌ GZ 压缩包损坏"
             exit 1
           fi
-          echo "✅ 压缩包结构验证通过"
-
-          echo "🔍 验证2：解压后内容与源文件完全一致"
           gzip -dc epg.xml.gz > epg_test.xml
-          TEST_MD5=$(md5sum epg_test.xml | awk '{print $1}')
-          
-          echo "👉 解压后文件MD5: $TEST_MD5"
-          if [ "$TEST_MD5" != "$SOURCE_MD5" ]; then
-            echo "❌ 解压后内容与源文件不一致"
+          if ! diff -q epg.xml epg_test.xml; then
+            echo "❌ 解压后不一致"
             exit 1
           fi
-          
-          rm -f epg_test.xml
-          echo "✅ 压缩包内容验证通过，100%可用"
+          rm -f epg.xml epg_test.xml
+          git rm -f --ignore-unmatch epg.xml
 
-          # ========== 5. 提交并推送文件 ==========
-          echo "📤 开始提交推送"
-          git add -f .gitattributes epg.xml epg.xml.gz ':!.github'
-          
+          # 拉取最新代码，解决推送冲突
+          git pull origin main --rebase
+
+          git add -f .gitattributes epg.xml.gz ':!.github'
           if git diff --cached --quiet; then
-            echo "ℹ️ 文件内容无变化，无需更新"
+            echo "ℹ️ 内容无变化，不更新"
             exit 0
           fi
-          
-          git commit -m "自动更新 EPG 数据"
+
+          git commit -m "自动更新 EPG（仅GZ，6/23点执行）"
           git push origin HEAD
-          echo "✅ 所有操作完成！压缩包已推送至仓库，100%可正常解压使用"
+          echo "✅ 完成！仅生成 epg.xml.gz"
